@@ -1,0 +1,31 @@
+[project]
+name = "auto-ocr"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "utsablpi", email = "utsabkundu.laserpowerinfra@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic>=2.11.0",
+    "fastapi>=0.165.0",
+    "google-auth>=2.63.1",
+    "gspread>=6.2.1",
+    "httpx>=0.28.1",
+    "pydantic<2.12",
+    "ruff>=0.17.6",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+auto-ocr = "auto_ocr:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]

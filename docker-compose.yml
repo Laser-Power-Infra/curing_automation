@@ -1,0 +1,18 @@
+# Runs on the server next to Evolution (notification-service). Secrets stay in .env, which is
+# mounted into the container and never copied into the image.
+services:
+  auto-ocr:
+    build: .
+    environment:
+      # The server's own address: where this container finds Evolution, and where Evolution finds it.
+      EVOLUTION_URL: ${EVOLUTION_URL:-http://192.168.1.190:6026}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://192.168.1.190:6027/whatsapp}
+    volumes:
+      - ./.env:/app/.env:ro
+      - ./photos:/app/photos   # received photos, results.jsonl, auto_ocr.log
+    ports:
+      - "6027:6027"
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "5"}
+    restart: unless-stopped
