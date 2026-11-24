@@ -1,9 +1,9 @@
 """Receives WhatsApp messages from Evolution and reads every photo posted in our groups:
-the curing group (WHATSAPP_GROUP_ID) and the hour meter group (HOURS_GROUP_ID).
+the curing group (WHATSAPP_GROUP_ID) and the hour meter groups (HOURS_GROUP_ID, UIC_GROUP_ID).
 
 Run:       uv run python -m uvicorn auto_ocr.webhook:app --host 0.0.0.0 --port 6027
 Register:  uv run python -m auto_ocr.webhook --register   (once: tells Evolution to call us)
-Catch up:  uv run python -m auto_ocr.webhook --catch-up 2026-11-23 [--dry-run] [--group curing|hours]
+Catch up:  uv run python -m auto_ocr.webhook --catch-up 2026-11-23 [--dry-run] [--group curing|hours|uic]
            (enters that day's group photos again; rows already in the sheet are left alone)
 """
 
@@ -49,8 +49,15 @@ def _evolution(method: str, path: str, **kwargs) -> httpx.Response:
 
 def _groups() -> dict[str, str]:
     """WhatsApp group id -> which flow reads its photos."""
-    found = {setting("WHATSAPP_GROUP_ID"): "curing", setting("HOURS_GROUP_ID"): "hours"}
+    found = {setting("WHATSAPP_GROUP_ID"): "curing", setting("HOURS_GROUP_ID"): "hours", setting("UIC_GROUP_ID"): "uic"}
     return {group: name for group, name in found.items() if group}
+
+
+LABEL = {"curing": "CURING", "hours": "HOUR METER", "uic": "UIC FORKLIFT"}  # shown at the start of every log line
+
+
+def _label(group: str | None) -> str:
+    return LABEL.get(_groups().get(group), "OTHER")
 
 
 def group_photo(event: object) -> dict | None:
@@ -85,6 +92,8 @@ def _log(record: dict) -> None:
 def handle(data: dict, dry_run: bool = False) -> None:
     """Save the photo, read it, enter it in the sheet, log it. Runs after the webhook has answered."""
     message_id = re.sub(r"\W", "", data["key"]["id"])  # goes into a file name
+    flow = _label(data["key"]["remoteJid"])
+    tag = f"[{flow}] {message_id}"
     taken_at = datetime.fromtimestamp(int(data["messageTimestamp"]), IST).replace(tzinfo=None)
     # participantAlt is the phone-number JID when WhatsApp addresses the sender by a hidden LID.
     sender = {"name": data.get("pushName"), "number": data["key"].get("participantAlt") or data["key"].get("participant")}
@@ -92,16 +101,17 @@ def handle(data: dict, dry_run: bool = False) -> None:
     try:
         image = (data.get("message") or {}).get("base64")
         if not image:  # the webhook was registered without base64: ask Evolution for the file
-            log.info("%s: no image in the event, asking Evolution for it", message_id)
+            log.info("%s: no image in the event, asking Evolution for it", tag)
             reply = _evolution("POST", "chat/getBase64FromMediaMessage", json={"message": {"key": data["key"]}})
             reply.raise_for_status()
             image = reply.json()["base64"]
         path = PHOTOS / f"{taken_at:%Y-%m-%d_%H%M%S}_{message_id}.jpeg"
         path.write_bytes(base64.b64decode(image))
         log.info("%s: photo saved as %s (%d bytes), sent %s by %s %s",
-                 message_id, path.name, path.stat().st_size, taken_at, sender["name"], sender["number"])
+                 tag, path.name, path.stat().st_size, taken_at, sender["name"], sender["number"])
 
-        hour_meter = _groups().get(data["key"]["remoteJid"]) == "hours"
+        tab = rules.HOURS_SHEETS.get(_groups().get(data["key"]["remoteJid"]))
+        hour_meter = tab is not None
         if hour_meter:
             step = "find the text sent with the photo"
             sent = int(data["messageTimestamp"])
@@ -109,25 +119,25 @@ def handle(data: dict, dry_run: bool = False) -> None:
             nearby = _messages(data["key"]["remoteJid"], datetime.fromtimestamp(sent - rules.TEXT_WINDOW, IST),
                                datetime.fromtimestamp(sent + rules.TEXT_WINDOW, IST))
             text = hours.text_for(data, nearby)
-            log.info("%s: hour meter photo, text: %r", message_id, text)
+            log.info("%s: text sent with the photo: %r", tag, text)
 
         step = "read the photo"
-        result = hours.read(path, text) if hour_meter else read_photo(path, taken_at)
-        log.info("%s: read as %s, rows=%s, uncertain=%s%s", message_id, result["kind"], json.dumps(result.get("rows", []), ensure_ascii=False),
+        result = hours.read(path, text, tab) if hour_meter else read_photo(path, taken_at)
+        log.info("%s: read as %s, rows=%s, uncertain=%s%s", tag, result["kind"], json.dumps(result.get("rows", []), ensure_ascii=False),
                  result["uncertain"], f", error={result['error']}" if "error" in result else "")
 
         step = "enter it in the sheet"
         entry = hours.write(result, taken_at.date(), dry_run) if hour_meter else sheet.write(result, sender["number"], dry_run)
         for c in entry["sheet_changes"]:
-            log.info("%s: %s %s row %d, %s = %s", message_id, "would fill" if dry_run else "filled", c["sheet"], c["row"], c["column"], c["value"])
+            log.info("%s: %s %s row %d, %s = %s", tag, "would fill" if dry_run else "filled", c["sheet"], c["row"], c["column"], c["value"])
         if not entry["sheet_changes"]:
-            log.info("%s: nothing to fill in the sheet", message_id)
+            log.info("%s: nothing to fill in the sheet", tag)
         for note in entry["notes"]:
-            log.warning("%s: %s", message_id, note)
-        _log({"sender": sender, "time": taken_at.isoformat(), **result, **entry})
+            log.warning("%s: %s", tag, note)
+        _log({"flow": flow, "sender": sender, "time": taken_at.isoformat(), **result, **entry})
     except Exception as e:  # a failed photo must leave a trace, not vanish
-        log.exception("%s: FAILED to %s", message_id, step)
-        _log({"sender": sender, "time": taken_at.isoformat(), "message_id": message_id, "error": f"{step}: {type(e).__name__}: {e}"})
+        log.exception("%s: FAILED to %s", tag, step)
+        _log({"flow": flow, "sender": sender, "time": taken_at.isoformat(), "message_id": message_id, "error": f"{step}: {type(e).__name__}: {e}"})
 
 
 # Evolution can deliver the same message twice; ids of saved photos survive a restart.
@@ -140,7 +150,8 @@ REQUIRED = ("EVOLUTION_API_KEY", "EVOLUTION_INSTANCE", "WHATSAPP_GROUP_ID", "WEB
 async def lifespan(_: FastAPI):
     missing = [name for name in REQUIRED if not setting(name)] + (
         [] if setting("CLAUDE_API_KEY") or setting("ANTHROPIC_API_KEY") else ["CLAUDE_API_KEY"])
-    log.info("receiver started: groups=%s, evolution=%s, %d photo(s) already handled", _groups(),
+    log.info("receiver started: groups=%s, evolution=%s, %d photo(s) already handled",
+             {LABEL[name]: group for group, name in _groups().items()},
              setting("EVOLUTION_URL", "http://127.0.0.1:6026"), len(seen))
     if missing:
         log.error("settings missing in .env: %s", ", ".join(missing))
@@ -167,16 +178,16 @@ async def whatsapp(request: Request, tasks: BackgroundTasks, x_webhook_secret: s
     if data is None:
         # Other chats are private: log only that something came, never who or what.
         inner = event.get("data") if isinstance(event, dict) and isinstance(event.get("data"), dict) else {}
-        group = _groups().get((inner.get("key") or {}).get("remoteJid"))
-        log.info("ignored: event=%s type=%s chat=%s", event.get("event") if isinstance(event, dict) else "?",
-                 inner.get("messageType"), f"{group} group" if group else "other")
+        log.info("[%s] ignored: event=%s type=%s", _label((inner.get("key") or {}).get("remoteJid")),
+                 event.get("event") if isinstance(event, dict) else "?", inner.get("messageType"))
         return {"status": "ignored"}
     message_id = re.sub(r"\W", "", data["key"]["id"])
+    tag = f"[{_label(data['key']['remoteJid'])}] {message_id}"
     if message_id in seen:
-        log.info("%s: duplicate delivery, skipped", message_id)
+        log.info("%s: duplicate delivery, skipped", tag)
         return {"status": "duplicate"}
     seen.add(message_id)
-    log.info("%s: photo from our group accepted", message_id)
+    log.info("%s: photo accepted", tag)
     tasks.add_task(handle, data)
     return {"status": "accepted"}
 

@@ -5,6 +5,7 @@ from auto_ocr import webhook
 
 GROUP = "120363431318894759@g.us"
 HOURS = "120363041942137931@g.us"
+UIC = "120363045012663865@g.us"
 
 
 def event(message_id="ABC123", group=GROUP, kind="imageMessage", name="messages.upsert"):
@@ -25,6 +26,7 @@ def post(monkeypatch):
     monkeypatch.setenv("WEBHOOK_SECRET", "s3cret")
     monkeypatch.setenv("WHATSAPP_GROUP_ID", GROUP)
     monkeypatch.setenv("HOURS_GROUP_ID", HOURS)
+    monkeypatch.setenv("UIC_GROUP_ID", UIC)
     monkeypatch.setattr(webhook, "handle", lambda data: handled.append(data["key"]["id"]))
     monkeypatch.setattr(webhook, "seen", set())
     monkeypatch.setattr(webhook.log, "handlers", [])  # keep test events out of the real log file
@@ -46,3 +48,4 @@ def test_only_a_photo_from_our_group_is_read_and_only_once(post):
     assert post(event())[1] == "accepted"
     assert post(event()) == (200, "duplicate", ["ABC123"])
     assert post(event("HOUR1", group=HOURS))[1] == "accepted"
+    assert post(event("UIC1", group=UIC))[1] == "accepted"

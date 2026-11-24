@@ -21,7 +21,8 @@ cells are filled). Everything read and every cell filled is logged in `photos/re
 Photos in the hour meter group `HOURS_GROUP_ID` (LASER HOUR METER UPDATE) go to the
 LASER EQUIPMENT READING tab of the FUEL CONSUMPTION sheet: the receiver waits 60 s for the text
 the sender types with the photo ("FL 22", "Hydra 5"), finds the machine's column by its
-equipment ID (row 2) and fills that day's row (rules.py section 8).
+equipment ID (row 2) and fills that day's row (rules.py section 8). Photos in `UIC_GROUP_ID`
+(UIC FORKLIFT & DG UPDATE) go the same way to the UIC EQUIPMENT READING tab.
 
     uv run python -m uvicorn auto_ocr.webhook:app --host 0.0.0.0 --port 6027
     uv run python -m auto_ocr.webhook --register    # once, or after WEBHOOK_URL changes
@@ -29,7 +30,7 @@ equipment ID (row 2) and fills that day's row (rules.py section 8).
     uv run python -m auto_ocr --dry-run photo.jpeg   # show the cells a photo would fill (--write to fill them)
 
 Settings in `.env`: `EVOLUTION_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`,
-`WHATSAPP_GROUP_ID`, `HOURS_GROUP_ID`, `WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `WEBHOOK_URL` (the address Evolution uses to reach
+`WHATSAPP_GROUP_ID`, `HOURS_GROUP_ID`, `UIC_GROUP_ID`, `WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `WEBHOOK_URL` (the address Evolution uses to reach
 this receiver).
 
 If Application Control blocks `uv run` ("blocked this file"), run with the base Python:

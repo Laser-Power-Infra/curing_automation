@@ -180,11 +180,12 @@ tank_sign:
 - event: the "IN" or "OUT" sign."""
 
 
-# ── 8. Hour meter group (LASER HOUR METER UPDATE) ───────────────────────────
+# ── 8. Hour meter groups (LASER HOUR METER UPDATE, UIC FORKLIFT & DG UPDATE) ─
 # Photos of forklift / hydra / DG-set hour meters go into one sheet: one row per day
 # (column A), one column per machine (row 1 name, row 2 equipment ID).
 HOURS_SPREADSHEET_ID = "15sZGLWLzASpdcUOXdr98B7x7TmvBzDmyee-hgtRzYGM"
-HOURS_SHEET = "LASER EQUIPMENT READING"
+# Group (see webhook._groups) -> its tab; both tabs are in HOURS_SPREADSHEET_ID.
+HOURS_SHEETS = {"hours": "LASER EQUIPMENT READING", "uic": "UIC EQUIPMENT READING"}
 # The machine is named in the caption, or in a text the same person sends within this many
 # seconds before or after the photo, or written on the machine itself.
 TEXT_WINDOW = 60
@@ -212,10 +213,14 @@ Return:
   mechanical counter whose last (often red) wheel is tenths (4244.5), or a DG panel "Eng Hrs"
   (640.97). Ignore clocks, dates printed by the camera, fuel and pressure gauges. If the screen is
   unreadable but the message text gives the hours (e.g. "1686.33 hrs"), use the text.
-  If there is no reading, return null and list "reading" in `uncertain`.
+  The photo may be sideways or upside down and the digits doubled by camera shake: read the
+  display in the direction of its printed labels (HOURS, 1/10), first digit to last.
+  Each machine's last reading is listed below only to help you read unclear digits: the meter
+  now shows about the same or a few hours more. Return what the display shows; never copy the
+  last reading. If there is no reading, return null and list "reading" in `uncertain`.
 - uncertain: names of fields you are not sure of.
 
-Machines (ID | name | location):
+Machines (ID | name | row 3 | last reading):
 {equipment}
 
 Message text sent with the photo:
