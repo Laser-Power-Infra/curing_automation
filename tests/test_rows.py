@@ -40,8 +40,13 @@ def test_curing_row_matches_sheet_row_for_lot_477():
             "Chamber / Tank": "Water Tank 1",
             "Curing Start Date": "20-Nov-26",
             "Curing Start Time": "1:53 am",
+            "Curing End Date": "21-Nov-26",
+            "Curing End Time": "4:30 pm",
         }
     ]
+    # a bare Off time is the first one after the 90°C time: 90°C 22:50, Off 06:50 -> next morning
+    bare = rows.curing_rows(photo(**PAGE, temp90="22:50", off="06:50"))[0]
+    assert (bare["Curing End Date"], bare["Curing End Time"]) == ("21-Nov-26", "6:50 am")
 
 
 def test_one_row_per_drum():
