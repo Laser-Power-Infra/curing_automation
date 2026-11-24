@@ -72,8 +72,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           tags: |
-            ghcr.io/${{ steps.owner.outputs.name }}/curing-automation:latest
-            ghcr.io/${{ steps.owner.outputs.name }}/curing-automation:${{ steps.vars.outputs.short_sha }}
+            ghcr.io/${{ steps.owner.outputs.name }}/curing_automation:latest
+            ghcr.io/${{ steps.owner.outputs.name }}/curing_automation:${{ steps.vars.outputs.short_sha }}
 
   deploy:
     name: Deploy to Server
@@ -86,23 +86,23 @@ jobs:
       - name: Sync latest docker-compose.yml
         shell: powershell
         run: |
-          Copy-Item -Path "docker-compose.yml" -Destination "D:/curing-automation/docker-compose.yml" -Force
-          Write-Host "Synced latest docker-compose.yml to D:/curing-automation/"
+          Copy-Item -Path "docker-compose.yml" -Destination "D:/curing_automation/docker-compose.yml" -Force
+          Write-Host "Synced latest docker-compose.yml to D:/curing_automation/"
 
       - name: Pull and restart container
         shell: powershell
-        working-directory: D:/curing-automation
+        working-directory: D:/curing_automation
         env:
           APP_VERSION: ${{ needs.build-and-push.outputs.short_sha }}
         run: |
           $ErrorActionPreference = "Stop"
           # .env is mounted as a file; if it is missing Docker would create a folder in its place
-          if (-not (Test-Path ".env" -PathType Leaf)) { throw "D:/curing-automation/.env is missing" }
+          if (-not (Test-Path ".env" -PathType Leaf)) { throw "D:/curing_automation/.env is missing" }
 
           docker compose pull auto-ocr
           docker compose up -d --no-deps auto-ocr
 
-          $repo = "ghcr.io/laser-power-infra/curing-automation"
+          $repo = "ghcr.io/laser-power-infra/curing_automation"
           $allImages = docker images --filter "reference=$repo" --format "{{.ID}}" | Select-Object -Unique
           $oldImages = $allImages | Select-Object -Skip 2
 
@@ -133,5 +133,5 @@ jobs:
               Start-Sleep -Seconds 5
           }
           Write-Host "auto-ocr did not become healthy at $url within 60s; last 50 log lines:"
-          docker compose -f D:/curing-automation/docker-compose.yml logs --tail 50 auto-ocr
+          docker compose -f D:/curing_automation/docker-compose.yml logs --tail 50 auto-ocr
           exit 1

@@ -1,9 +1,9 @@
-# Runs on the server in D:/curing-automation, next to Evolution (notification-service).
+# Runs on the server in D:/curing_automation, next to Evolution (notification-service).
 # A push to main builds the image and deploys it (.github/workflows/deploy.yml).
 # Secrets stay in .env, which is mounted into the container and never copied into the image.
 services:
   auto-ocr:
-    image: ghcr.io/laser-power-infra/curing-automation:${APP_VERSION:-latest}
+    image: ghcr.io/laser-power-infra/curing_automation:${APP_VERSION:-latest}
     container_name: auto-ocr
     environment:
       # The server's own address: where this container finds Evolution, and where Evolution finds it.
