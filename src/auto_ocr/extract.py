@@ -59,7 +59,13 @@ def _api_key() -> str | None:
     return None  # the SDK then tries its own login profile
 
 
-def extract(image: Path) -> Extraction:
+class HourReading(BaseModel):
+    equipment_id: str
+    reading: float | None
+    uncertain: list[str]
+
+
+def _read(image: Path, prompt: str, output: type[BaseModel]):
     client = anthropic.Anthropic(api_key=_api_key())
     response = client.messages.parse(
         model=rules.MODEL,
@@ -76,12 +82,21 @@ def extract(image: Path) -> Extraction:
                             "data": base64.standard_b64encode(image.read_bytes()).decode(),
                         },
                     },
-                    {"type": "text", "text": rules.PROMPT},
+                    {"type": "text", "text": prompt},
                 ],
             }
         ],
-        output_format=Extraction,
+        output_format=output,
     )
     if response.parsed_output is None:
         raise RuntimeError(f"{image.name}: no result (stop_reason={response.stop_reason})")
     return response.parsed_output
+
+
+def extract(image: Path) -> Extraction:
+    return _read(image, rules.PROMPT, Extraction)
+
+
+def extract_hours(image: Path, text: str, equipment: str) -> HourReading:
+    """equipment: one 'ID | name | location' line per machine."""
+    return _read(image, rules.HOURS_PROMPT.format(equipment=equipment, text=text or "(none)"), HourReading)

@@ -8,6 +8,7 @@ Sections:
   5. Sheet entry (when a row is added, when a cell is filled)
   6. Product list
   7. Instructions given to the AI model
+  8. Hour meter group (its sheet entry rules and AI instructions)
 """
 
 from datetime import datetime, time
@@ -177,3 +178,45 @@ tank_sign:
 - tank_no: the number on the tank sign (it may be misspelt, e.g. "TRANK -1").
 - fuel: "WOOD FIRE" is Wood; a diesel sign is Diesel.
 - event: the "IN" or "OUT" sign."""
+
+
+# ── 8. Hour meter group (LASER HOUR METER UPDATE) ───────────────────────────
+# Photos of forklift / hydra / DG-set hour meters go into one sheet: one row per day
+# (column A), one column per machine (row 1 name, row 2 equipment ID).
+HOURS_SPREADSHEET_ID = "15sZGLWLzASpdcUOXdr98B7x7TmvBzDmyee-hgtRzYGM"
+HOURS_SHEET = "LASER EQUIPMENT READING"
+# The machine is named in the caption, or in a text the same person sends within this many
+# seconds before or after the photo, or written on the machine itself.
+TEXT_WINDOW = 60
+# Sheet entry
+#   - Row: the date the photo was sent (India time). No row for that date yet: a new row is
+#     added under the last one.
+#   - Only an empty cell is filled. A second photo of the same machine that day is logged,
+#     not written (the first reading of the day stays).
+#   - A reading lower than that machine's last reading, or more than 24 hours a day above it,
+#     is not written (looks misread, e.g. 12044.3 for 1204.3).
+#   - If the machine's last values are all whole numbers, the reading is written without its
+#     tenths (Hydra 4244.5 -> 4244); otherwise as the meter shows it.
+WHOLE_NUMBER_CHECK = 5  # how many of the machine's last values decide "whole numbers"
+
+HOURS_PROMPT = """This photo was posted in a factory WhatsApp group where people send the hour meter
+reading of a machine (forklift, hydra crane, DG set, boiler, hired vehicle).
+
+Return:
+- equipment_id: the machine, as one ID from the list below. People name it in the message text
+  ("FL 22", "F . L . 8", "Forklift No-19", "35 NOF" = forklift 35, "Hydra 5", "Haider 5" = Hydra 5,
+  "FOR clip 25" = forklift 25) or write the ID on the machine (e.g. "U1DG000007" in marker).
+  Forklift N means the machine named "FORKLIFT NO. N"; its ID number is different from N.
+  If you cannot tell which machine it is, return "" and list "equipment_id" in `uncertain`.
+- reading: the total hours on the meter, with its decimals: an LCD with a "1/10" box (5469.6), a
+  mechanical counter whose last (often red) wheel is tenths (4244.5), or a DG panel "Eng Hrs"
+  (640.97). Ignore clocks, dates printed by the camera, fuel and pressure gauges. If the screen is
+  unreadable but the message text gives the hours (e.g. "1686.33 hrs"), use the text.
+  If there is no reading, return null and list "reading" in `uncertain`.
+- uncertain: names of fields you are not sure of.
+
+Machines (ID | name | location):
+{equipment}
+
+Message text sent with the photo:
+{text}"""

@@ -111,8 +111,8 @@ def _letter(index: int) -> str:
     return (_letter(index // 26 - 1) if index >= 26 else "") + chr(65 + index % 26)
 
 
-def write(result: dict, sender: str | None = None, dry_run: bool = False) -> dict:
-    """Read the sheet, work out the cells to fill, fill them (unless dry_run). Returns what was done."""
+def open_book(key: str) -> gspread.Spreadsheet:
+    """The spreadsheet, opened as the service account (it must be shared with it as Editor)."""
     credentials = Credentials.from_service_account_info(
         {
             "client_email": setting("GOOGLE_SERVICE_ACCOUNT_EMAIL"),
@@ -121,7 +121,12 @@ def write(result: dict, sender: str | None = None, dry_run: bool = False) -> dic
         },
         scopes=["https://www.googleapis.com/auth/spreadsheets"],
     )
-    book = gspread.authorize(credentials).open_by_key(rules.SPREADSHEET_ID)
+    return gspread.authorize(credentials).open_by_key(key)
+
+
+def write(result: dict, sender: str | None = None, dry_run: bool = False) -> dict:
+    """Read the sheet, work out the cells to fill, fill them (unless dry_run). Returns what was done."""
+    book = open_book(rules.SPREADSHEET_ID)
     names = [CURING, BOILER, rules.PERSON_SHEET]
     with _lock:
         tables = dict(zip(names, book.values_batch_get([f"'{n}'" for n in names])["valueRanges"]))

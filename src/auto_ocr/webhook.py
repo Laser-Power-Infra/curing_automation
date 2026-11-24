@@ -1,8 +1,9 @@
-"""Receives WhatsApp messages from Evolution and reads every photo posted in our group.
+"""Receives WhatsApp messages from Evolution and reads every photo posted in our groups:
+the curing group (WHATSAPP_GROUP_ID) and the hour meter group (HOURS_GROUP_ID).
 
 Run:       uv run python -m uvicorn auto_ocr.webhook:app --host 0.0.0.0 --port 6027
 Register:  uv run python -m auto_ocr.webhook --register   (once: tells Evolution to call us)
-Catch up:  uv run python -m auto_ocr.webhook --catch-up 2026-11-23 [--dry-run]
+Catch up:  uv run python -m auto_ocr.webhook --catch-up 2026-11-23 [--dry-run] [--group curing|hours]
            (enters that day's group photos again; rows already in the sheet are left alone)
 """
 
@@ -12,6 +13,7 @@ import json
 import logging
 import re
 import sys
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
@@ -21,7 +23,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 
-from . import read_photo, sheet
+from . import hours, read_photo, rules, sheet
 from .config import setting
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -45,15 +47,34 @@ def _evolution(method: str, path: str, **kwargs) -> httpx.Response:
     return httpx.request(method, url, headers={"apikey": setting("EVOLUTION_API_KEY")}, timeout=30, **kwargs)
 
 
+def _groups() -> dict[str, str]:
+    """WhatsApp group id -> which flow reads its photos."""
+    found = {setting("WHATSAPP_GROUP_ID"): "curing", setting("HOURS_GROUP_ID"): "hours"}
+    return {group: name for group, name in found.items() if group}
+
+
 def group_photo(event: object) -> dict | None:
-    """The Evolution message data if this event is a photo posted in our group, else None."""
+    """The Evolution message data if this event is a photo posted in one of our groups, else None."""
     data = event.get("data") if isinstance(event, dict) else None
     key = data.get("key") if isinstance(data, dict) else None
     if not isinstance(key, dict) or event.get("event") != "messages.upsert":
         return None
-    if key.get("remoteJid") != setting("WHATSAPP_GROUP_ID") or data.get("messageType") != "imageMessage":
+    if key.get("remoteJid") not in _groups() or data.get("messageType") != "imageMessage":
         return None
     return data if key.get("id") and str(data.get("messageTimestamp", "")).isdigit() else None
+
+
+def _messages(group: str, start: datetime, end: datetime) -> list[dict]:
+    """Every message Evolution has stored for `group` between start and end (aware datetimes)."""
+    where = {"key": {"remoteJid": group}, "messageTimestamp": {"gte": start.isoformat(), "lte": end.isoformat()}}
+    records, page, pages = [], 1, 1
+    while page <= pages:
+        reply = _evolution("POST", "chat/findMessages", json={"where": where, "page": page, "offset": 100})
+        reply.raise_for_status()
+        found = reply.json()["messages"]
+        records += found["records"]
+        pages, page = found.get("pages") or 1, page + 1
+    return records
 
 
 def _log(record: dict) -> None:
@@ -80,13 +101,23 @@ def handle(data: dict, dry_run: bool = False) -> None:
         log.info("%s: photo saved as %s (%d bytes), sent %s by %s %s",
                  message_id, path.name, path.stat().st_size, taken_at, sender["name"], sender["number"])
 
+        hour_meter = _groups().get(data["key"]["remoteJid"]) == "hours"
+        if hour_meter:
+            step = "find the text sent with the photo"
+            sent = int(data["messageTimestamp"])
+            time.sleep(max(0, sent + rules.TEXT_WINDOW - time.time()))  # a follow-up text may still be on its way
+            nearby = _messages(data["key"]["remoteJid"], datetime.fromtimestamp(sent - rules.TEXT_WINDOW, IST),
+                               datetime.fromtimestamp(sent + rules.TEXT_WINDOW, IST))
+            text = hours.text_for(data, nearby)
+            log.info("%s: hour meter photo, text: %r", message_id, text)
+
         step = "read the photo"
-        result = read_photo(path, taken_at)
+        result = hours.read(path, text) if hour_meter else read_photo(path, taken_at)
         log.info("%s: read as %s, rows=%s, uncertain=%s%s", message_id, result["kind"], json.dumps(result.get("rows", []), ensure_ascii=False),
                  result["uncertain"], f", error={result['error']}" if "error" in result else "")
 
         step = "enter it in the sheet"
-        entry = sheet.write(result, sender["number"], dry_run)
+        entry = hours.write(result, taken_at.date(), dry_run) if hour_meter else sheet.write(result, sender["number"], dry_run)
         for c in entry["sheet_changes"]:
             log.info("%s: %s %s row %d, %s = %s", message_id, "would fill" if dry_run else "filled", c["sheet"], c["row"], c["column"], c["value"])
         if not entry["sheet_changes"]:
@@ -109,7 +140,7 @@ REQUIRED = ("EVOLUTION_API_KEY", "EVOLUTION_INSTANCE", "WHATSAPP_GROUP_ID", "WEB
 async def lifespan(_: FastAPI):
     missing = [name for name in REQUIRED if not setting(name)] + (
         [] if setting("CLAUDE_API_KEY") or setting("ANTHROPIC_API_KEY") else ["CLAUDE_API_KEY"])
-    log.info("receiver started: group=%s, evolution=%s, %d photo(s) already handled", setting("WHATSAPP_GROUP_ID"),
+    log.info("receiver started: groups=%s, evolution=%s, %d photo(s) already handled", _groups(),
              setting("EVOLUTION_URL", "http://127.0.0.1:6026"), len(seen))
     if missing:
         log.error("settings missing in .env: %s", ", ".join(missing))
@@ -136,9 +167,9 @@ async def whatsapp(request: Request, tasks: BackgroundTasks, x_webhook_secret: s
     if data is None:
         # Other chats are private: log only that something came, never who or what.
         inner = event.get("data") if isinstance(event, dict) and isinstance(event.get("data"), dict) else {}
-        ours = (inner.get("key") or {}).get("remoteJid") == setting("WHATSAPP_GROUP_ID")
+        group = _groups().get((inner.get("key") or {}).get("remoteJid"))
         log.info("ignored: event=%s type=%s chat=%s", event.get("event") if isinstance(event, dict) else "?",
-                 inner.get("messageType"), "our group" if ours else "other")
+                 inner.get("messageType"), f"{group} group" if group else "other")
         return {"status": "ignored"}
     message_id = re.sub(r"\W", "", data["key"]["id"])
     if message_id in seen:
@@ -170,22 +201,18 @@ def register() -> None:
     print("stored:", json.dumps(found, indent=2))
 
 
-def catch_up(day: str, dry_run: bool) -> None:
-    """Handle every photo Evolution has stored for our group on `day` (YYYY-MM-DD, India time)."""
-    where = {"key": {"remoteJid": setting("WHATSAPP_GROUP_ID")},
-             "messageTimestamp": {"gte": f"{day}T00:00:00+05:30", "lte": f"{day}T23:59:59+05:30"}}
-    records, page, pages = [], 1, 1
-    while page <= pages:
-        reply = _evolution("POST", "chat/findMessages", json={"where": where, "page": page, "offset": 100})
-        reply.raise_for_status()
-        found = reply.json()["messages"]
-        records += found["records"]
-        pages, page = found.get("pages") or 1, page + 1
-    photos = sorted((r for r in records if r.get("messageType") == "imageMessage"), key=lambda r: int(r["messageTimestamp"]))
-    print(f"{len(photos)} photo(s) on {day}")
-    for record in photos:
-        handle(record, dry_run)
-        print((PHOTOS / "results.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+def catch_up(day: str, dry_run: bool, only: str | None = None) -> None:
+    """Handle every photo Evolution has stored for our groups on `day` (YYYY-MM-DD, India time)."""
+    start = datetime.fromisoformat(f"{day}T00:00:00+05:30")
+    for group, name in _groups().items():
+        if only and only != name:
+            continue
+        records = _messages(group, start, start + timedelta(days=1, seconds=-1))
+        photos = sorted((r for r in records if r.get("messageType") == "imageMessage"), key=lambda r: int(r["messageTimestamp"]))
+        print(f"{len(photos)} photo(s) on {day} in the {name} group")
+        for record in photos:
+            handle(record, dry_run)
+            print((PHOTOS / "results.jsonl").read_text(encoding="utf-8").splitlines()[-1])
 
 
 if __name__ == "__main__":
@@ -193,6 +220,7 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["--register"]:
         register()
     elif sys.argv[1:2] == ["--catch-up"] and len(sys.argv) > 2:
-        catch_up(sys.argv[2], "--dry-run" in sys.argv)
+        group = sys.argv[sys.argv.index("--group") + 1] if "--group" in sys.argv else None
+        catch_up(sys.argv[2], "--dry-run" in sys.argv, group)
     else:
         print(__doc__)

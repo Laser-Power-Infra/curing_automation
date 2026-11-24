@@ -18,13 +18,18 @@ message. Photos posted in the group `WHATSAPP_GROUP_ID` are saved to `photos/`, 
 result is entered in the Google Sheet by the "Sheet entry" rules in `rules.py` (only empty
 cells are filled). Everything read and every cell filled is logged in `photos/results.jsonl`.
 
+Photos in the hour meter group `HOURS_GROUP_ID` (LASER HOUR METER UPDATE) go to the
+LASER EQUIPMENT READING tab of the FUEL CONSUMPTION sheet: the receiver waits 60 s for the text
+the sender types with the photo ("FL 22", "Hydra 5"), finds the machine's column by its
+equipment ID (row 2) and fills that day's row (rules.py section 8).
+
     uv run python -m uvicorn auto_ocr.webhook:app --host 0.0.0.0 --port 6027
     uv run python -m auto_ocr.webhook --register    # once, or after WEBHOOK_URL changes
-    uv run python -m auto_ocr.webhook --catch-up 2026-11-23 [--dry-run]   # photos missed while it was off
+    uv run python -m auto_ocr.webhook --catch-up 2026-11-23 [--dry-run] [--group curing|hours]   # photos missed while it was off
     uv run python -m auto_ocr --dry-run photo.jpeg   # show the cells a photo would fill (--write to fill them)
 
 Settings in `.env`: `EVOLUTION_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`,
-`WHATSAPP_GROUP_ID`, `WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `WEBHOOK_URL` (the address Evolution uses to reach
+`WHATSAPP_GROUP_ID`, `HOURS_GROUP_ID`, `WEBHOOK_SECRET`, `GOOGLE_SERVICE_ACCOUNT_EMAIL`, `GOOGLE_PRIVATE_KEY`, `WEBHOOK_URL` (the address Evolution uses to reach
 this receiver).
 
 If Application Control blocks `uv run` ("blocked this file"), run with the base Python:
