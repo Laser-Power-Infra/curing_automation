@@ -39,14 +39,21 @@ If Application Control blocks `uv run` ("blocked this file"), run with the base 
 
 ## Run on the server (Docker)
 
-Copy this folder to the server (with `.env`; the photos and `.venv` are not needed), then:
+A push to `main` deploys by itself (`.github/workflows/deploy.yml`, same as the other repos):
+tests run, the image is built and pushed to `ghcr.io/laser-power-infra/curing-automation`, and
+the server's self-hosted runner pulls it into `D:/curing-automation`, restarts `auto-ocr` and
+checks `/health`.
 
-    docker compose up -d --build
+The server folder `D:/curing-automation` only keeps what is not in git: `.env` and `photos/`
+(the workflow copies `docker-compose.yml` there). By hand, if ever needed:
+
+    cd D:/curing-automation
+    docker compose pull auto-ocr; docker compose up -d auto-ocr
     docker compose exec auto-ocr python -m auto_ocr.webhook --register   # points Evolution at the server
     curl http://127.0.0.1:6027/health
 
 `docker-compose.yml` assumes the server is `192.168.1.190` (Evolution on 6026, this receiver
-on 6027). Stop the receiver on the PC once the server one is registered: only one should run.
+on 6027). Only one receiver should run.
 
 ## Logs
 
