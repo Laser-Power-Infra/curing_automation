@@ -38,9 +38,8 @@ CURING_COLUMNS = [
     "Chamber / Tank",
     "Curing Start Date",  # = In time on the page
     "Curing Start Time",
-    "Curing End Date",  # = Off on the page (planned); the OUT sign photo replaces it, see section 5
-    "Curing End Time",
 ]
+# Curing End Date / Time are not read from the page (its Off is only the plan): see section 5.
 BOILER_COLUMNS = [
     "Date",  # = when the photo was taken
     "Time",
@@ -89,9 +88,9 @@ SPREADSHEET_ID = "1GgRE8r_r75vQt4ZZlFMlPCDkkVf1DJZrlfosT0Mc_bI"
 # Curing Log
 #   - Notebook page: one row per drum, found by Lot No + Core Drum No. Not there: new row.
 #     There: only its empty cells are filled.
-#   - The page's Off (planned end) fills an empty Curing End. The OUT sign photo sets Curing End
-#     to its photo time in the latest row with that drum number (also a row of an earlier day),
-#     also over a value already there: the one exception to "only empty cells", as Off is only the plan.
+#   - The page never fills Curing End (its Off is only the plan). The OUT sign photo does: the time
+#     it was sent goes into the latest row with that drum number and an empty Curing End (also a
+#     row of an earlier day).
 #   - The IN sign photo fills Chamber / Tank and Curing Start of that row if they are empty.
 SIGN_MATCH_DAYS = 7  # a sign photo only matches a lot that went in within this many days
 PERSON_SHEET = "Person Master"  # column A name, column C WhatsApp number (10 digits)

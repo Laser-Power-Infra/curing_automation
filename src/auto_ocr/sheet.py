@@ -95,18 +95,11 @@ def changes(result: dict, tables: dict[str, list[list[str]]], sender: str | None
                 if r["Date"] == sign["Date"] and not r[FUEL]:  # fuel can change during a day: blanks only
                     fill(BOILER, n, {}, {FUEL: sign[FUEL]})
         lot = [(n, r) for n, r in curing
-               if r["Core Drum No"] == sign["Core Drum No"] and recent(r, sign["Date"])]
+               if r["Core Drum No"] == sign["Core Drum No"] and not r["Curing End Date"] and recent(r, sign["Date"])]
         if not lot:
-            notes.append(f"{sign['Event'] or 'sign'} photo: no lot with drum {sign['Core Drum No']!r} in the Curing Log")
+            notes.append(f"{sign['Event'] or 'sign'} photo: no open lot with drum {sign['Core Drum No']!r} in the Curing Log")
         elif sign["Event"] == "OUT":
-            n, r = lot[-1]
-            end = {"Curing End Date": sign["Date"], "Curing End Time": sign["Time"]}
-            was = f"{r['Curing End Date']} {r['Curing End Time']}".strip()
-            if was and was != f"{sign['Date']} {sign['Time']}":  # the page's planned Off: the actual time replaces it
-                notes.append(f"{CURING} row {n}: Curing End was {was!r}, set to the OUT photo time")
-                out.extend({"sheet": CURING, "row": n, "column": c, "value": v} for c, v in end.items())
-            else:
-                fill(CURING, n, r, end)
+            fill(CURING, *lot[-1], {"Curing End Date": sign["Date"], "Curing End Time": sign["Time"]})
         elif sign["Event"] == "IN":
             fill(CURING, *lot[-1], {"Chamber / Tank": sign["Chamber / Tank"],
                                     "Curing Start Date": sign["Date"], "Curing Start Time": sign["Time"]})

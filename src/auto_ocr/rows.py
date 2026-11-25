@@ -55,7 +55,6 @@ def _temp(x, n: int) -> str:
 def curing_rows(x) -> list[dict]:
     page_date = x.page_date and datetime.strptime(x.page_date, "%Y-%m-%d")
     start = _at(x.in_time, page_date)
-    end = _at(x.off, _at(x.temp90, start) or start)  # Off = 90°C time + hours, so a bare time comes after it
     values = {
         "Lot No": x.lot_no or "",
         "Core Production Date": _stamp(page_date)[0],
@@ -63,8 +62,6 @@ def curing_rows(x) -> list[dict]:
         "Chamber / Tank": _tank(x),
         "Curing Start Date": _stamp(start)[0],
         "Curing Start Time": _stamp(start)[1],
-        "Curing End Date": _stamp(end)[0],
-        "Curing End Time": _stamp(end)[1],
     }
     rows = []
     for drum in x.drums or [None]:

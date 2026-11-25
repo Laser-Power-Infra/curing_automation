@@ -71,14 +71,5 @@ def test_out_sign_fills_the_end_of_the_open_lot_from_an_earlier_day():
                             ("Curing Log", 3, "Curing End Time"): "3:10 pm"}
 
     closed = LOT_479 + ["22-Nov-26", "3:10 pm"]
-    assert sheet.changes(sign("OUT", "22-Nov-26", "3:10 pm", fuel=""), tables(curing=[closed])) == ([], [])
+    assert sheet.changes(sign("OUT", "22-Nov-26", "3:10 pm", fuel=""), tables(curing=[closed]))[0] == []
 
-
-def test_page_off_fills_curing_end_and_the_out_photo_replaces_it():
-    page = {**PAGE, "rows": [{**PAGE["rows"][0], "Curing End Date": "23-Nov-26", "Curing End Time": "3:00 pm"}]}
-    assert cells(sheet.changes(page, tables(curing=[LOT_479]))) == {
-        ("Curing Log", 2, "Curing End Date"): "23-Nov-26", ("Curing Log", 2, "Curing End Time"): "3:00 pm"}
-    planned = LOT_479 + ["23-Nov-26", "3:00 pm"]
-    found = sheet.changes(sign("OUT", "23-Nov-26", "3:25 pm", fuel=""), tables(curing=[planned]))
-    assert cells(found) == {("Curing Log", 2, "Curing End Date"): "23-Nov-26", ("Curing Log", 2, "Curing End Time"): "3:25 pm"}
-    assert "set to the OUT photo time" in found[1][0]
