@@ -7,6 +7,7 @@ Catch up:  uv run python -m auto_ocr.webhook --catch-up 2026-11-23 [--dry-run] [
            (enters that day's group photos again; rows already in the sheet are left alone)
 """
 
+import asyncio
 import base64
 import hmac
 import json
@@ -146,6 +147,26 @@ REQUIRED = ("EVOLUTION_API_KEY", "EVOLUTION_INSTANCE", "WHATSAPP_GROUP_ID", "WEB
             "GOOGLE_SERVICE_ACCOUNT_EMAIL", "GOOGLE_PRIVATE_KEY")
 
 
+def next_reminder(now: datetime) -> datetime:
+    """The next whole hour that is a multiple of REMINDER_EVERY (12 am, 2 am, ...)."""
+    every = rules.REMINDER_EVERY
+    return now.replace(minute=0, second=0, microsecond=0) + timedelta(hours=every - now.hour % every)
+
+
+async def remind() -> None:
+    """Post the reminder in the curing group at every next_reminder time, until the receiver stops."""
+    while True:
+        now = datetime.now(IST)
+        await asyncio.sleep((next_reminder(now) - now).total_seconds())
+        try:
+            reply = await asyncio.to_thread(_evolution, "POST", "message/sendText",
+                                            json={"number": setting("WHATSAPP_GROUP_ID"), "text": rules.REMINDER_TEXT})
+            reply.raise_for_status()
+            log.info("[CURING] reminder sent: %r", rules.REMINDER_TEXT)
+        except Exception:  # one failed send must not stop the later ones
+            log.exception("[CURING] reminder FAILED to send")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     missing = [name for name in REQUIRED if not setting(name)] + (
@@ -155,7 +176,9 @@ async def lifespan(_: FastAPI):
              setting("EVOLUTION_URL", "http://127.0.0.1:6026"), len(seen))
     if missing:
         log.error("settings missing in .env: %s", ", ".join(missing))
+    reminder = asyncio.create_task(remind())
     yield
+    reminder.cancel()
     log.info("receiver stopped")
 
 

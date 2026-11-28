@@ -49,3 +49,11 @@ def test_only_a_photo_from_our_group_is_read_and_only_once(post):
     assert post(event()) == (200, "duplicate", ["ABC123"])
     assert post(event("HOUR1", group=HOURS))[1] == "accepted"
     assert post(event("UIC1", group=UIC))[1] == "accepted"
+
+
+def test_reminder_every_two_hours():
+    from datetime import datetime
+    at = lambda d, h, m: datetime(2026, 11, d, h, m, tzinfo=webhook.IST)
+    assert webhook.next_reminder(at(28, 13, 40)) == at(28, 14, 0)
+    assert webhook.next_reminder(at(28, 14, 0)) == at(28, 16, 0)
+    assert webhook.next_reminder(at(28, 23, 10)) == at(29, 0, 0)

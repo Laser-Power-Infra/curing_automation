@@ -9,6 +9,7 @@ Sections:
   6. Product list
   7. Instructions given to the AI model
   8. Hour meter group (its sheet entry rules and AI instructions)
+  9. Reminder posted in the curing group
 """
 
 from datetime import datetime, time
@@ -226,3 +227,9 @@ Machines (ID | name | row 3 | last reading):
 
 Message text sent with the photo:
 {text}"""
+
+
+# ── 9. Reminder ─────────────────────────────────────────────────────────────
+# Posted in the curing group (where the boiler panel photos come) as plain text, no AI.
+REMINDER_TEXT = "Kindly send the pending photos if any"
+REMINDER_EVERY = 2  # hours; sent at 12 am, 2 am, 4 am ... 10 pm India time

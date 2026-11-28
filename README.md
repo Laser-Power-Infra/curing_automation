@@ -23,6 +23,8 @@ LASER EQUIPMENT READING tab of the FUEL CONSUMPTION sheet: the receiver waits 60
 the sender types with the photo ("FL 22", "Hydra 5"), finds the machine's column by its
 equipment ID (row 2) and fills that day's row (rules.py section 8). Photos in `UIC_GROUP_ID`
 (UIC FORKLIFT & DG UPDATE) go the same way to the UIC EQUIPMENT READING tab.
+Every 2 hours (12 am, 2 am … India time) the receiver posts "Kindly send the pending photos if any"
+in the curing group (rules.py section 9; plain text, no AI).
 
     uv run python -m uvicorn auto_ocr.webhook:app --host 0.0.0.0 --port 6027
     uv run python -m auto_ocr.webhook --register    # once, or after WEBHOOK_URL changes
